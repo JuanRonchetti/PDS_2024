@@ -40,6 +40,14 @@ ventanas = {
     'Flat-Top':     sig.flattop(N)
 }
 
+# Colores para las ventanas
+colores = {
+    'Rectangular': 'blue',
+    'Hann': 'orange',
+    'Blackman': 'green',
+    'Flat-Top': 'red'
+}
+
 for window_name, window in ventanas.items():
     for realization in range(cant_realiz):
         # Generar ruido
@@ -63,8 +71,6 @@ for window_name, window in ventanas.items():
         
         # Estimador en la frecuencia deseada (índice N/4)
         a1_estimate = ( fft_signal[int(N//4)] * 2 )
-        
-        # LA HANN Y LA BLACKMAN HAY QUE MULTIPLICAR POR 2 DE NUEVO, LA RECTANGULAR NO
         
         # Almacenar estimaciones
         a1_estimates[window_name].append(a1_estimate)
@@ -133,14 +139,17 @@ for window_name in ventanas.keys():
     plt.tight_layout()
     plt.show()
 
-# Graficar Histograma de a_1 para las tres ventanas
+# Graficar Histogramas de a_1 para las tres ventanas
 resultados = []
-plt.figure(figsize=(10,6))
+fig, axs = plt.subplots(2, 1, figsize=(10, 12))
+fig.suptitle('Histogramas', fontsize=20)
+
+# Primer subplot: Histograma original
 for window_name in a1_estimates.keys():
     mean_a1_estimate = np.mean(a1_estimates[window_name])  # Media
     var_a1_estimate = np.var(a1_estimates[window_name])     # Varianza
-    std_a1_estimate = np.std(a1_estimates[window_name])     # Desvio
-    percent_std_a1 = (std_a1_estimate / mean_a1_estimate) * 100  # Desvio sobre la media
+    std_a1_estimate = np.std(a1_estimates[window_name])     # Desvío
+    percent_std_a1 = (std_a1_estimate / mean_a1_estimate) * 100  # Desvío sobre la media
     sesgo_a1 = np.mean(np.array(a1_estimates[window_name]) - a1) # Sesgo
     resultados.append({
             'Ventana': window_name,
@@ -149,16 +158,38 @@ for window_name in a1_estimates.keys():
             'Varianza': var_a1_estimate,
             'Desvio/Media': percent_std_a1
         })
-    df_resultados = pd.DataFrame(resultados)
-    plt.hist(a1_estimates[window_name], bins=15, alpha=0.5,
-             label=f'{window_name} - $\mu$: {np.mean(a1_estimates[window_name]):.2f}, $\sigma$: {np.std(a1_estimates[window_name]):.2f}', 
+    
+    axs[0].hist(a1_estimates[window_name], bins=15, alpha=0.5,
+             label=f'{window_name} - $\mu$: {mean_a1_estimate:.2f}, $\sigma^2$: {var_a1_estimate:.2f}', 
              density=True)
+    axs[0].axvline(a1+sesgo_a1, color=colores[window_name], linestyle='--', label=f'Sesgo {window_name}: {sesgo_a1:.2f}')
 
-plt.title('Histograma de $\\hat{a_1}$ para diferentes ventanas')
-plt.xlabel('$\hat{a}_1$ [V]')
-plt.ylabel('Densidad')
-plt.axvline(a1, color='red', linestyle='--', label='Valor real $a_1$')
-plt.legend()
-plt.grid()
-plt.tight_layout()
+axs[0].set_title('Histograma Original de $\\hat{a_1}$')
+axs[0].set_xlabel('$\hat{a}_1$ [V]')
+axs[0].set_ylabel('Densidad')
+axs[0].axvline(a1, color='black', label='Valor real $a_1$')
+axs[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
+axs[0].legend()
+axs[0].grid()
+
+# Segundo subplot: Histograma corregido por sesgo
+for window_name in a1_estimates.keys():
+    sesgo_a1 = np.mean(np.array(a1_estimates[window_name]) - a1)
+    a1_estimates[window_name] = a1_estimates[window_name] - sesgo_a1
+    mean_a1_estimate_corregido = np.mean(a1_estimates[window_name])  # Media
+    var_a1_estimate_corregido = np.var(a1_estimates[window_name])
+
+    axs[1].hist(a1_estimates[window_name], bins=15, alpha=0.5,
+                 label=f'{window_name} - $\mu$: {mean_a1_estimate_corregido:.2f}, $\sigma^2$: {var_a1_estimate_corregido:.2f}', 
+                 density=True)
+
+axs[1].set_title('Histograma Corregido de $\\hat{a_1}$')
+axs[1].set_xlabel('$\hat{a}_1$ [V]')
+axs[1].set_ylabel('Densidad')
+axs[1].axvline(a1, color='black', label='Valor real $a_1$')
+axs[1].legend(loc='upper left', bbox_to_anchor=(1, 1))
+axs[1].legend()
+axs[1].grid()
+
+plt.tight_layout()  # Ajustar el layout para el suptitle
 plt.show()
