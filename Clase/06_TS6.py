@@ -18,30 +18,33 @@ f0 = fs / N
 ts = 1 / fs  
 df = fs / N  
 
-# Frecuencias para SNRs
-SNR_db_values = [3, 10]  # SNRs en dB
-a1 = 1
+# Fijar SNR
+SNR_db = 3  # SNR en dB
+SNR = 10 ** (SNR_db / 10)  # Conversión a veces
+a1 = 2
 w0 = N/4
+Ps = (a1 ** 2) / 2
+Pr = Ps / SNR
 
 # Histograma para almacenar resultados
-a1_estimates = {snr: [] for snr in SNR_db_values}
-omega_estimates = {snr: [] for snr in SNR_db_values}
-
-# Variables para almacenar la última señal y su FFT
+a1_estimates = { 'Rectangular': [], 'Hann': [], 'Blackman': [] }
 last_signals = {}
 last_ffts = {}
 
-for SNR_db in SNR_db_values:
-    SNR = 10 ** (SNR_db / 10)  # Conversión a veces
-    Ps = (a1 ** 2) / 2
-    Pr = Ps / SNR
-    
+# Ventanas a aplicar
+ventanas = {
+    'Rectangular': np.ones(N),
+    'Hann':np.hanning(N),  
+    'Blackman': np.blackman(N)  
+}
+
+for window_name, window in ventanas.items():
     for realization in range(cant_realiz):
         # Generar ruido
         n = np.random.normal(0, np.sqrt(Pr), N)
         
         # Frecuencia aleatoria
-        fr = np.random.uniform(-.75, .75)
+        fr = np.random.uniform(-2, 2)
         w1 = w0 + fr * df
         
         # Tiempo
@@ -50,107 +53,78 @@ for SNR_db in SNR_db_values:
         # Señal
         signal = a1 * np.sin(2 * np.pi * w1 * k) + n
         
+        # Aplicar ventana a la señal
+        windowed_signal = signal * window
+        
         # FFT y estimación de a1
-        fft_signal = np.abs(np.fft.fft(signal) / N)
+        fft_signal = np.abs(np.fft.fft(windowed_signal) / N)
         
         # Estimador en la frecuencia deseada (índice N/4)
-        a1_estimate = fft_signal[int(N/4)] * 2  # Multiplicamos por 2 para corregir la amplitud
+        a1_estimate = fft_signal[int(w0)] * 2  # Multiplicamos por 2 para corregir la amplitud
         
         # Almacenar estimaciones
-        a1_estimates[SNR_db].append(a1_estimate)
+        a1_estimates[window_name].append(a1_estimate)
         
-        # Calcular el estimador de omega
-        omega = np.argmax(fft_signal) * df  # Encuentra el índice máximo y lo convierte a frecuencia
-        omega_estimate = np.abs( (N/2) - omega )
-        omega_estimates[SNR_db].append(omega_estimate)
-        
-        # Guardar solo la última señal y su FFT para cada SNR
+        # Guardar solo la última señal y su FFT para cada ventana
         if realization == cant_realiz - 1:
-            last_signals[SNR_db] = signal
-            last_ffts[SNR_db] = fft_signal
+            last_signals[window_name] = windowed_signal  # Guardar la señal con ventana aplicada
+            last_ffts[window_name] = fft_signal
 
 # Graficar señales y FFTs en subplots
-fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+fig, axs = plt.subplots(3, 4, figsize=(16, 10))
 frecuencias = np.fft.fftfreq(N, d=ts)
 
-# Señal para SNR de 3 dB
-axs[0, 0].plot(np.linspace(0, (N-1)*ts, N), last_signals[3], label='Señal (SNR=3 dB)')
-axs[0, 0].set_title('Señal en el Tiempo (SNR=3 dB)')
-axs[0, 0].set_xlabel('Tiempo [s]')
-axs[0, 0].set_ylabel('Amplitud [V]')
-axs[0, 0].set_xlim(0, 100*ts) 
-axs[0, 0].legend()
-axs[0, 0].grid()
+for i, (window_name, window) in enumerate(ventanas.items()):
+    # Señal en el tiempo con ventana aplicada
+    axs[i, 0].plot(np.linspace(0, (N-1)*ts, N), last_signals[window_name], label=f'Señal con {window_name}')
+    axs[i, 0].set_title(f'Señal en el Tiempo ({window_name})')
+    axs[i, 0].set_xlabel('Tiempo [s]')
+    axs[i, 0].set_ylabel('Amplitud [V]')
+    axs[i, 0].set_xlim(0, 1) 
+    axs[i, 0].legend()
+    axs[i, 0].grid()
 
-# FFT para SNR de 3 dB
-axs[0, 1].plot(frecuencias[:N//2], 10*np.log10(last_ffts[3][:N//2]), label='FFT (SNR=3 dB)')
-axs[0, 1].set_title('FFT (SNR=3 dB)')
-axs[0, 1].set_xlabel('Frecuencia [Hz]')
-axs[0, 1].set_ylabel('Amplitud [dB]')
-axs[0, 1].legend()
-axs[0, 1].grid()
+    # FFT de la señal original (sin ventana)
+    fft_original_signal = np.abs(np.fft.fft(signal) / N)
+    axs[i, 1].plot(frecuencias[:N//2], 10*np.log10(fft_original_signal[:N//2]), label='FFT Señal Original')
+    axs[i, 1].set_title(f'FFT Señal Original ({window_name})')
+    axs[i, 1].set_xlabel('Frecuencia [Hz]')
+    axs[i, 1].set_ylabel('Amplitud [dB]')
+    axs[i, 1].legend()
+    axs[i, 1].grid()
 
-# Señal para SNR de 10 dB
-axs[1, 0].plot(np.linspace(0, (N-1)*ts, N), last_signals[10], label='Señal (SNR=10 dB)', color='orange')
-axs[1, 0].set_title('Señal en el Tiempo (SNR=10 dB)')
-axs[1, 0].set_xlabel('Tiempo [s]')
-axs[1, 0].set_ylabel('Amplitud [V]')
-axs[1, 0].set_xlim(0, 100*ts)
-axs[1, 0].legend()
-axs[1, 0].grid()
-
-# FFT para SNR de 10 dB
-axs[1, 1].plot(frecuencias[:N//2], 10*np.log10(last_ffts[10][:N//2]), label='FFT (SNR=10 dB)', color='orange')
-axs[1, 1].set_title('FFT (SNR=10 dB)')
-axs[1, 1].set_xlabel('Frecuencia [Hz]')
-axs[1, 1].set_ylabel('Amplitud [dB]')
-axs[1, 1].legend()
-axs[1, 1].grid()
+    # FFT de la ventana en sí misma
+    fft_window = np.abs(np.fft.fft(window) / N)
+    axs[i, 2].plot(frecuencias[:N//2], 10*np.log10(fft_window[:N//2]), label=f'FFT Ventana ({window_name})')
+    axs[i, 2].set_title(f'FFT Ventana ({window_name})')
+    axs[i, 2].set_xlabel('Frecuencia [Hz]')
+    axs[i, 2].set_ylabel('Amplitud [dB]')
+    axs[i, 2].legend()
+    axs[i, 2].grid()
+    
+    # FFT para la señal con ventana aplicada
+    axs[i, 3].plot(frecuencias[:N//2], 10*np.log10(last_ffts[window_name][:N//2]), label=f'FFT ({window_name})')
+    axs[i, 3].set_title(f'FFT Señal*Ventana ({window_name})')
+    axs[i, 3].set_xlabel('Frecuencia [Hz]')
+    axs[i, 3].set_ylabel('Amplitud [dB]')
+    axs[i, 3].legend()
+    axs[i, 3].grid()
 
 plt.tight_layout()
 plt.show()
 
+# Graficar Histograma de a_1 para las tres ventanas
+plt.figure(figsize=(10,6))
+for window_name in a1_estimates.keys():
+    plt.hist(a1_estimates[window_name], bins=15, alpha=0.5,
+             label=f'{window_name} - $\mu$: {np.mean(a1_estimates[window_name]):.2f}, $\sigma$: {np.std(a1_estimates[window_name]):.2f}', 
+             density=True)
 
-# Graficar Histogramas en Subplots Horizontales
-fig, axs = plt.subplots(1, 2, figsize=(14, 6))
-
-# Histograma de a_1
-for snr in SNR_db_values:
-    mean_a1_estimate = np.mean(a1_estimates[snr])  # Calcular la media de las estimaciones de a_1
-    var_a1_estimate = np.var(a1_estimates[snr])     # Calcular la varianza de las estimaciones de a_1
-    std_a1_estimate = np.std(a1_estimates[snr])     # Calcular el desvío estándar de las estimaciones de a_1
-    percent_std_a1 = (std_a1_estimate / mean_a1_estimate) * 100  # Porcentaje del desvío estándar sobre la media
-
-    axs[0].hist(a1_estimates[snr], bins=15, alpha=0.5, 
-                label=f'SNR {snr} dB - $\mu$: {mean_a1_estimate:.2f}, $\sigma^2$: {var_a1_estimate:.2f}, $\sigma$: {std_a1_estimate:.2f} ({percent_std_a1:.2f}%)', 
-                density=True)
-
-axs[0].set_title('Histograma de $\\hat{a_1}$')
-axs[0].set_xlabel('$\hat{a}_1$ [V]')
-axs[0].set_ylabel('Densidad')
-axs[0].axvline(a1, color='red', linestyle='--', label='Valor real $a_1$')
-axs[0].legend()
-axs[0].grid()
-axs[0].set_xlim(a1*0.6, a1*1.4)  # Limitar el eje x para mejor visualización
-
-# Histograma de Ω^1
-for snr in SNR_db_values:
-    mean_omega_estimate = np.mean(omega_estimates[snr])  # Calcular la media de las estimaciones de Ω^1
-    var_omega_estimate = np.var(omega_estimates[snr])     # Calcular la varianza de las estimaciones de Ω^1
-    std_omega_estimate = np.std(omega_estimates[snr])     # Calcular el desvío estándar de las estimaciones de Ω^1
-    percent_std_omega = (std_omega_estimate / mean_omega_estimate) * 100  # Porcentaje del desvío estándar sobre la media
-
-    axs[1].hist(omega_estimates[snr], bins=15, alpha=0.5, 
-                label=f'SNR {snr} dB - $\mu$: {mean_omega_estimate:.2f}, $\sigma^2$: {var_omega_estimate:.2f}, $\sigma$: {std_omega_estimate:.2f} ({percent_std_omega:.2f}%)', 
-                density=True)
-
-axs[1].set_title('Histograma de $\\hat{\\Omega}_1$')
-axs[1].set_xlabel('$\\hat{\\Omega}_1$ [Hz]')
-axs[1].set_ylabel('Densidad')
-axs[1].axvline(np.pi/2, color='red', linestyle='--', label='Valor real $\\Omega_0$')
-axs[1].legend()
-axs[1].grid()
-axs[1].set_xlim(w0-2, w0+2)  # Limitar el eje x para mejor visualización
-
+plt.title('Histograma de $\\hat{a_1}$ para diferentes ventanas')
+plt.xlabel('$\hat{a}_1$ [V]')
+plt.ylabel('Densidad')
+plt.axvline(a1, color='red', linestyle='--', label='Valor real $a_1$')
+plt.legend()
+plt.grid()
 plt.tight_layout()
 plt.show()
